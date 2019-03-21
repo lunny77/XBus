@@ -20,6 +20,8 @@ public final class XBus {
     private final Map<Class<?>, List<Subscription>> subscriptionByEventType;
     private final Map<Object, List<Class<?>>> typesBySubscriber;
 
+    private final Map<Class<?>, Object> stickyEvents;
+
     private ExecutorService executor;
     private HandlerPoster handlerPoster;
     private AsyncPoster asyncPoster;
@@ -28,6 +30,7 @@ public final class XBus {
         subscriberMethodFinder = new SubscriberMethodFinder();
         subscriptionByEventType = new ArrayMap<>();
         typesBySubscriber = new ArrayMap<>();
+        stickyEvents = new ArrayMap<>();
         executor = Executors.newFixedThreadPool(4, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -87,6 +90,18 @@ public final class XBus {
             typesBySubscriber.put(subscriber, eventOfSubscriber);
         }
         eventOfSubscriber.add(subscriberMethod.eventType);
+
+        //如果是sticky方法，检查缓存中是否有需要处理的sticky事件
+        if (subscriberMethod.sticky) {
+            Object stickyEvent = stickyEvents.get(eventType);
+            checkStickyEvent(subscription, stickyEvent);
+        }
+    }
+
+    private void checkStickyEvent(Subscription subscription, Object event) {
+        if (event != null) {
+            postToSubscription(event, subscription);
+        }
     }
 
     public void unregister(Object subscriber) {
@@ -108,6 +123,15 @@ public final class XBus {
                 }
             }
         }
+    }
+
+    public void postSticky(Object stickyEvent) {
+        stickyEvents.put(stickyEvent.getClass(), stickyEvent);
+        post(stickyEvent);
+    }
+
+    public void removeStick(Object stickyEvent) {
+        stickyEvents.remove(stickyEvent.getClass());
     }
 
     public void post(Object event) {
